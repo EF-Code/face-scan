@@ -1,0 +1,19 @@
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+# Virtual environments
+.env
+.venv
+venv/
+# Distribution and packaging
+build/
+dist/
+*.egg-info/
+# Editor temporary files
+*.swp
+*~
+# Generated config files
+*.log
+.codex/
