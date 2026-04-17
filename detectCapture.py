@@ -11,7 +11,7 @@ from typing import Optional, Tuple
 import cv2
 
 from face_detector import FaceDetector
-from utils import configure_logger
+from utils import AuditLogger, DEFAULT_CASCADE_SHA256, configure_logger, sha256_file
 
 
 class FPSMeter:
@@ -56,6 +56,16 @@ def parse_args() -> argparse.Namespace:
         "--cascade",
         default="haarcascade_frontalface_default.xml",
         help="Path to the Haar cascade XML file.",
+    )
+    parser.add_argument(
+        "--cascade-sha256",
+        default=os.getenv("FACE_SCAN_CASCADE_SHA256") or None,
+        help="Expected sha256 for the cascade XML (enables integrity check).",
+    )
+    parser.add_argument(
+        "--skip-cascade-check",
+        action="store_true",
+        help="Skip cascade integrity check.",
     )
     parser.add_argument(
         "--min-width",
@@ -154,6 +164,11 @@ def parse_args() -> argparse.Namespace:
         default=os.getenv("FACE_SCAN_LOG_FORMAT", "text"),
         help="Log output format (default: text).",
     )
+    parser.add_argument(
+        "--audit-log",
+        default=os.getenv("FACE_SCAN_AUDIT_LOG") or None,
+        help="Optional append-only JSONL audit log path.",
+    )
     return parser.parse_args()
 
 
@@ -201,15 +216,47 @@ def save_snapshot(frame: cv2.Mat, directory: str) -> str:
 def main() -> int:
     args = parse_args()
     logger = configure_logger(args.log_level, log_file=args.log_file, log_format=args.log_format)
+    audit = AuditLogger(args.audit_log) if args.audit_log else None
+    if audit:
+        audit.emit(
+            "capture_start",
+            camera=args.camera,
+            cascade=args.cascade,
+            privacy=args.privacy,
+            record=args.record,
+            snapshot_dir=args.snapshot_dir,
+        )
 
     if not os.path.exists(args.cascade):
         logger.error("Cascade XML is missing: %s", args.cascade)
+        if audit:
+            audit.emit("capture_error", reason="missing_cascade")
         return 1
+
+    if not args.skip_cascade_check:
+        expected = args.cascade_sha256
+        if expected is None and args.cascade == "haarcascade_frontalface_default.xml":
+            expected = DEFAULT_CASCADE_SHA256
+        if expected:
+            actual = sha256_file(args.cascade)
+            if actual.lower() != expected.lower():
+                logger.error("Cascade integrity check failed for %s", args.cascade)
+                logger.error("Expected sha256=%s got=%s", expected, actual)
+                if audit:
+                    audit.emit(
+                        "capture_error",
+                        reason="cascade_hash_mismatch",
+                        expected_sha256=expected,
+                        actual_sha256=actual,
+                    )
+                return 1
 
     try:
         capture = prepare_capture(args)
     except RuntimeError as exc:
         logger.error(exc)
+        if audit:
+            audit.emit("capture_error", reason="capture_open_failed")
         return 1
 
     frame_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -238,16 +285,21 @@ def main() -> int:
     last_snapshot = ""
     last_snapshot_time = 0.0
     start_time = time.time()
+    exit_ok = True
+    exit_reason = ""
 
     try:
         while True:
             if args.timeout and (time.time() - start_time) > args.timeout:
                 logger.info("Timeout reached (%.1fs) — exiting.", args.timeout)
+                exit_reason = "timeout"
                 break
 
             ret, frame = capture.read()
             if not ret or frame is None:
                 logger.warning("Capture stream closed.")
+                exit_ok = False
+                exit_reason = "capture_closed"
                 break
 
             detections, detect_time = detector.detect(
@@ -287,6 +339,13 @@ def main() -> int:
                 last_snapshot = save_snapshot(frame, snapshot_dir)
                 last_snapshot_time = time.time()
                 logger.info("Automatic snapshot %s", last_snapshot)
+                if audit:
+                    audit.emit(
+                        "capture_snapshot",
+                        kind="auto",
+                        file=os.path.basename(last_snapshot),
+                        faces=len(detections),
+                    )
 
             if writer:
                 writer.write(frame)
@@ -295,21 +354,35 @@ def main() -> int:
                 cv2.imshow("Face Capture", frame)
                 key = cv2.waitKey(1) & 0xFF
                 if key in (27, ord("q")):
+                    exit_reason = "user_exit"
                     break
                 if key == ord("s") and snapshot_dir:
                     last_snapshot = save_snapshot(frame, snapshot_dir)
                     last_snapshot_time = time.time()
                     logger.info("Manual snapshot %s", last_snapshot)
+                    if audit:
+                        audit.emit(
+                            "capture_snapshot",
+                            kind="manual",
+                            file=os.path.basename(last_snapshot),
+                            faces=len(detections),
+                        )
             else:
                 pass # No display, so no key waits.
     except KeyboardInterrupt:
         logger.info("Interrupted by user.")
+        exit_ok = False
+        exit_reason = "keyboard_interrupt"
     finally:
         capture.release()
         if writer:
             writer.release()
         cv2.destroyAllWindows()
 
+    if audit:
+        audit.emit("capture_finish", ok=exit_ok, reason=exit_reason)
+    if exit_reason == "capture_closed":
+        return 1
     return 0
 
 
