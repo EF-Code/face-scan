@@ -17,3 +17,4 @@ dist/
 # Generated config files
 *.log
 .codex/
+.codex
