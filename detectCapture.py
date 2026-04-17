@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import os
 import sys
 import time
@@ -12,15 +11,23 @@ from typing import Optional, Tuple
 import cv2
 
 from face_detector import FaceDetector
+from utils import configure_logger
 
 
 class FPSMeter:
+    """
+    Calculates and smooths Frames Per Second (FPS) over time.
+
+    Attributes:
+        smoothing (float): The smoothing factor for FPS calculation (default: 0.9).
+    """
     def __init__(self, smoothing: float = 0.9) -> None:
         self._last: float = 0.0
         self._value: float = 0.0
         self._smoothing = smoothing
 
     def update(self) -> float:
+        """Updates the FPS meter and returns the smoothed FPS value."""
         now = time.perf_counter()
         if self._last == 0.0:
             self._last = now
@@ -127,19 +134,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--log-level",
         choices=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
-        default="INFO",
+        default=os.getenv("FACE_SCAN_LOG_LEVEL", "INFO"),
         help="Logging level for the capture experience.",
     )
-    return parser.parse_args()
-
-
-def configure_logger(level: str) -> logging.Logger:
-    logging.basicConfig(
-        level=getattr(logging, level),
-        format="[%(asctime)s] %(levelname)s %(message)s",
-        datefmt="%H:%M:%S",
+    parser.add_argument(
+        "--log-file",
+        default=os.getenv("FACE_SCAN_LOG_FILE") or None,
+        help="Optional log file path (supports rotation).",
     )
-    return logging.getLogger(__name__)
+    parser.add_argument(
+        "--log-format",
+        choices=("text", "json"),
+        default=os.getenv("FACE_SCAN_LOG_FORMAT", "text"),
+        help="Log output format (default: text).",
+    )
+    return parser.parse_args()
 
 
 def prepare_capture(args: argparse.Namespace) -> cv2.VideoCapture:
@@ -175,7 +184,7 @@ def save_snapshot(frame: cv2.Mat, directory: str) -> str:
 
 def main() -> int:
     args = parse_args()
-    logger = configure_logger(args.log_level)
+    logger = configure_logger(args.log_level, log_file=args.log_file, log_format=args.log_format)
 
     if not os.path.exists(args.cascade):
         logger.error("Cascade XML is missing: %s", args.cascade)
@@ -269,8 +278,7 @@ def main() -> int:
                     last_snapshot_time = time.time()
                     logger.info("Manual snapshot %s", last_snapshot)
             else:
-                if cv2.waitKey(1) & 0xFF == 27:
-                    break
+                pass # No display, so no key waits.
     except KeyboardInterrupt:
         logger.info("Interrupted by user.")
     finally:

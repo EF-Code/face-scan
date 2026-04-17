@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import os
 import sys
 
 import cv2
 
 from face_detector import FaceDetector
+from utils import configure_logger
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,8 +55,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--log-level",
         choices=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
-        default="INFO",
+        default=os.getenv("FACE_SCAN_LOG_LEVEL", "INFO"),
         help="Log level (default: INFO).",
+    )
+    parser.add_argument(
+        "--log-file",
+        default=os.getenv("FACE_SCAN_LOG_FILE") or None,
+        help="Optional log file path (supports rotation).",
+    )
+    parser.add_argument(
+        "--log-format",
+        choices=("text", "json"),
+        default=os.getenv("FACE_SCAN_LOG_FORMAT", "text"),
+        help="Log output format (default: text).",
     )
     parser.add_argument(
         "--no-show",
@@ -64,15 +75,6 @@ def parse_args() -> argparse.Namespace:
         help="Skip the display window after detection.",
     )
     return parser.parse_args()
-
-
-def configure_logger(level: str) -> logging.Logger:
-    logging.basicConfig(
-        level=getattr(logging, level),
-        format="[%(asctime)s] %(levelname)s %(message)s",
-        datefmt="%H:%M:%S",
-    )
-    return logging.getLogger(__name__)
 
 
 def load_image(path: str) -> cv2.Mat:
@@ -84,7 +86,7 @@ def load_image(path: str) -> cv2.Mat:
 
 def main() -> int:
     args = parse_args()
-    logger = configure_logger(args.log_level)
+    logger = configure_logger(args.log_level, log_file=args.log_file, log_format=args.log_format)
 
     if not os.path.exists(args.cascade):
         logger.error("Cascade XML is missing: %s", args.cascade)
