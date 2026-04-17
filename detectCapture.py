@@ -138,6 +138,18 @@ def parse_args() -> argparse.Namespace:
         help="Stop after TIMEOUT seconds (0 is unlimited).",
     )
     parser.add_argument(
+        "--reconnect-attempts",
+        type=int,
+        default=0,
+        help="Retry opening the capture source this many times on read failure (default: 0).",
+    )
+    parser.add_argument(
+        "--reconnect-delay",
+        type=float,
+        default=0.5,
+        help="Seconds to wait between reconnect attempts (default: 0.5).",
+    )
+    parser.add_argument(
         "--no-display",
         action="store_true",
         help="Skip showing the live window (useful for headless runs).",
@@ -287,6 +299,7 @@ def main() -> int:
     start_time = time.time()
     exit_ok = True
     exit_reason = ""
+    reconnect_left = max(0, int(args.reconnect_attempts))
 
     try:
         while True:
@@ -297,6 +310,37 @@ def main() -> int:
 
             ret, frame = capture.read()
             if not ret or frame is None:
+                if reconnect_left > 0:
+                    reconnect_left -= 1
+                    logger.warning(
+                        "Capture read failed; attempting reconnect (%s left)...",
+                        reconnect_left,
+                    )
+                    if audit:
+                        audit.emit("capture_reconnect", left=reconnect_left)
+                    capture.release()
+                    time.sleep(max(0.0, float(args.reconnect_delay)))
+                    try:
+                        capture = prepare_capture(args)
+                    except RuntimeError as exc:
+                        logger.warning("Reconnect failed: %s", exc)
+                        continue
+
+                    new_w = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    new_h = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    if writer and (new_w, new_h) != (frame_width, frame_height):
+                        logger.warning(
+                            "Capture size changed (%sx%s -> %sx%s); stopping recording.",
+                            frame_width,
+                            frame_height,
+                            new_w,
+                            new_h,
+                        )
+                        writer.release()
+                        writer = None
+                    frame_width, frame_height = new_w, new_h
+                    continue
+
                 logger.warning("Capture stream closed.")
                 exit_ok = False
                 exit_reason = "capture_closed"
