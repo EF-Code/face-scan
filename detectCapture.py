@@ -116,6 +116,12 @@ def parse_args() -> argparse.Namespace:
         help="Minimum seconds between automated snapshots when faces present.",
     )
     parser.add_argument(
+        "--privacy",
+        choices=("none", "blur", "pixelate", "black"),
+        default=os.getenv("FACE_SCAN_PRIVACY", "none"),
+        help="Redact detected faces for privacy (default: none).",
+    )
+    parser.add_argument(
         "--timeout",
         type=float,
         default=0,
@@ -172,6 +178,11 @@ def build_writer(path: str, fps: int, size: Tuple[int, int]) -> Optional[cv2.Vid
 
 def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
+    if os.name == "posix":
+        try:
+            os.chmod(path, 0o700)
+        except OSError:
+            pass
 
 
 def save_snapshot(frame: cv2.Mat, directory: str) -> str:
@@ -179,6 +190,11 @@ def save_snapshot(frame: cv2.Mat, directory: str) -> str:
     suffix = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
     snapshot_path = os.path.join(directory, f"face_{suffix}.jpg")
     cv2.imwrite(snapshot_path, frame)
+    if os.name == "posix":
+        try:
+            os.chmod(snapshot_path, 0o600)
+        except OSError:
+            pass
     return snapshot_path
 
 
@@ -204,6 +220,11 @@ def main() -> int:
             writer = build_writer(
                 args.record, args.fps, (frame_width, frame_height)
             )
+            if os.name == "posix":
+                try:
+                    os.chmod(args.record, 0o600)
+                except OSError:
+                    logger.debug("Unable to chmod recording file %s", args.record)
             logger.info("Recording to %s", args.record)
         except RuntimeError as exc:
             logger.warning("Unable to start recording: %s", exc)
@@ -235,6 +256,8 @@ def main() -> int:
                 min_neighbors=args.min_neighbors,
                 min_size=(args.min_width, args.min_height),
             )
+            if args.privacy != "none":
+                detector.redact_faces(frame, detections, mode=args.privacy)
             detector.draw_detections(frame, detections)
             fps = fps_meter.update()
 

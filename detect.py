@@ -70,6 +70,12 @@ def parse_args() -> argparse.Namespace:
         help="Log output format (default: text).",
     )
     parser.add_argument(
+        "--privacy",
+        choices=("none", "blur", "pixelate", "black"),
+        default=os.getenv("FACE_SCAN_PRIVACY", "none"),
+        help="Redact detected faces for privacy (default: none).",
+    )
+    parser.add_argument(
         "--no-show",
         action="store_true",
         help="Skip the display window after detection.",
@@ -110,14 +116,25 @@ def main() -> int:
         min_size=tuple(args.min_size),
     )
 
+    if args.privacy != "none":
+        detector.redact_faces(image, detections, mode=args.privacy)
+
     detector.draw_detections(image, detections)
     detector.overlay_metrics(image, face_count=len(detections))
 
     logger.info("%s", detector.summarize(detections, duration))
 
     if args.output:
-        cv2.imwrite(args.output, image)
-        logger.info("Saved annotated image to %s", args.output)
+        saved = cv2.imwrite(args.output, image)
+        if not saved:
+            logger.error("Failed to write annotated image to %s", args.output)
+        else:
+            if os.name == "posix":
+                try:
+                    os.chmod(args.output, 0o600)
+                except OSError:
+                    logger.debug("Unable to chmod output file %s", args.output)
+            logger.info("Saved annotated image to %s", args.output)
 
     if not args.no_show:
         cv2.imshow("Face Detection", image)

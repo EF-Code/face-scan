@@ -101,6 +101,52 @@ class FaceDetector:
         cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
 
     @staticmethod
+    def redact_faces(
+        frame: cv2.Mat,
+        detections: List[FaceDetection],
+        *,
+        mode: str = "blur",
+    ) -> None:
+        """
+        Redact faces in-place for privacy.
+
+        Modes:
+        - blur: gaussian blur the face ROI
+        - pixelate: downsample/upsample the ROI
+        - black: fill the ROI with black
+        """
+        if mode not in ("blur", "pixelate", "black"):
+            raise ValueError(f"Unknown redaction mode: {mode}")
+
+        height, width = frame.shape[:2]
+        for detection in detections:
+            x, y, w, h = detection.rect
+            x0 = max(0, int(x))
+            y0 = max(0, int(y))
+            x1 = min(width, int(x + w))
+            y1 = min(height, int(y + h))
+            if x1 <= x0 or y1 <= y0:
+                continue
+
+            roi = frame[y0:y1, x0:x1]
+            if mode == "black":
+                roi[:] = 0
+                continue
+
+            if mode == "pixelate":
+                # Keep at least 8px in each dimension so very small faces don't disappear.
+                px_w = max(8, roi.shape[1] // 12)
+                px_h = max(8, roi.shape[0] // 12)
+                small = cv2.resize(roi, (px_w, px_h), interpolation=cv2.INTER_LINEAR)
+                roi[:] = cv2.resize(small, (roi.shape[1], roi.shape[0]), interpolation=cv2.INTER_NEAREST)
+                continue
+
+            # Blur mode: scale kernel with ROI size and keep it odd.
+            kx = max(9, (roi.shape[1] // 8) | 1)
+            ky = max(9, (roi.shape[0] // 8) | 1)
+            roi[:] = cv2.GaussianBlur(roi, (kx, ky), 0)
+
+    @staticmethod
     def overlay_metrics(
         frame: cv2.Mat,
         fps: Optional[float] = None,
