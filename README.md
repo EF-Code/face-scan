@@ -16,8 +16,8 @@ This is a Python-based OpenCV project that detects faces in still images or live
 
 Install dependencies:
 
-```python
- pip install opencv-python
+```bash
+pip install -r requirements.txt
 ```
 
 ## How to Use
@@ -30,6 +30,13 @@ To run the static face detection:
 python detect.py
 ```
 You can tune detection behavior through the CLI flags (e.g., `--scale-factor 1.2 --min-size 80 80 --output annotated.jpg --log-level DEBUG`), or skip the GUI display with `--no-show`.
+
+Useful security/ops flags:
+
+* `--privacy blur|pixelate|black` redacts detected faces in the output.
+* `--cascade-sha256 ...` verifies the cascade XML hash (integrity).
+* `--audit-log audit.jsonl` writes an append-only audit log with a hash chain.
+* `--log-format json --log-file logs/run.log` for machine-readable logs + rotation.
 
 
 Sample Output:
@@ -46,3 +53,16 @@ To run real-time face detection using your webcam:
 python detectCapture.py --show-metrics --snapshot-dir snapshots
 ```
 This now logs detection metrics, overlays FPS/latency, optionally records to MP4 (`--record output.mp4`), and automatically/mannually saves snapshots when faces appear (`--snapshot-interval`, `s` key). Use `--no-display` for headless runs.
+
+Availability and integrity options:
+
+* `--reconnect-attempts 3 --reconnect-delay 0.5` retries camera reconnects on transient failures.
+* `--cascade-sha256 ...` verifies the cascade XML hash (integrity).
+
+## Audit Log Verification
+
+If you write an audit log (`--audit-log audit.jsonl`), you can verify its tamper-evident hash chain:
+
+```bash
+python verify_audit.py audit.jsonl
+```
