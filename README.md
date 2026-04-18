@@ -1,13 +1,13 @@
 # Face Recognition with OpenCV
 
-This is a Python-based OpenCV project that detects faces in still images or live camera feeds using Haar Cascade Classifiers. The utilities now offer CLI controls, structured logging, and optional recording/snapshot workflows for production-ready observability.
+This is a python OpenCV project that detects faces in static images or live camera feeds using Haar Cascade Classifiers.
 
 ## Features
 
-* CLI tunable image detection with annotated output and metrics
-* Live webcam surveillance with logging, FPS smoothing, automated snapshots, and optional recording
-* Automated/manual snapshots dumped to a configurable directory
-* Display overlays that show FPS, detection latency, face count, and most recent snapshot
+* Image detection with output and metrics
+* Live webcam feeds with various features
+* Automated/manual snapshots to a directory
+* Overlays that show FPS, detection latency, face count, and most recent snapshot
 
 ## Requirements
 
@@ -29,7 +29,7 @@ To run the static face detection:
 ```python
 python detect.py
 ```
-You can tune detection behavior through the CLI flags (e.g., `--scale-factor 1.2 --min-size 80 80 --output annotated.jpg --log-level DEBUG`), or skip the GUI display with `--no-show`.
+You can tune detection behavior with: `--scale-factor 1.2 --min-size 80 80 --output annotated.jpg --log-level DEBUG`. Or skip the GUI display with `--no-show`.
 
 Useful security/ops flags:
 
@@ -54,7 +54,7 @@ python detectCapture.py --show-metrics --snapshot-dir snapshots
 ```
 This now logs detection metrics, overlays FPS/latency, optionally records to MP4 (`--record output.mp4`), and automatically/mannually saves snapshots when faces appear (`--snapshot-interval`, `s` key). Use `--no-display` for headless runs.
 
-Availability and integrity options:
+Other options:
 
 * `--reconnect-attempts 3 --reconnect-delay 0.5` retries camera reconnects on transient failures.
 * `--cascade-sha256 ...` verifies the cascade XML hash (integrity).
