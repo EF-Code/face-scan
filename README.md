@@ -1,68 +1,99 @@
-# Face Recognition with OpenCV
+# Face Scan
 
-This is a python OpenCV project that detects faces in static images or live camera feeds using Haar Cascade Classifiers.
+`face-scan` is a small OpenCV toolkit for running face detection across images, live camera feeds, and video files. The project now shares one reusable core instead of separate ad hoc scripts, and it adds structured summaries, audit trails, privacy redaction modes, and better output validation.
 
-## Features
+## What Changed
 
-* Image detection with output and metrics
-* Live webcam feeds with various features
-* Automated/manual snapshots to a directory
-* Overlays that show FPS, detection latency, face count, and most recent snapshot
+The project has been overhauled around a reusable `face_scan/` package:
+
+- Shared detector, media, workflow, and observability modules
+- Safer output handling for images, recordings, snapshots, and JSON summaries
+- Dedicated video-file processing via `detect_video.py`
+- Better CLI parity across image, video, and live capture modes
+- Support for camera indexes or device/file paths in live capture
+- Cleaner error handling when cascades or output targets are invalid
+- Lightweight tests for audit logging, JSON output, and capture-source parsing
 
 ## Requirements
 
-* Python 3.x
-* OpenCV
+- Python 3.x
+- OpenCV
 
 Install dependencies:
 
 ```bash
-pip install -r requirements.txt
+/home/wellington/env/bin/python -m pip install -r requirements.txt
 ```
 
-## How to Use
+## Commands
 
-### 1. Detect Faces in an Image
+Use `/home/wellington/env/bin/python` for every command below.
 
-To run the static face detection:
+### Detect Faces in an Image
 
-```python
-python detect.py
+```bash
+/home/wellington/env/bin/python detect.py image.jpg --output annotated.jpg --summary-json reports/image.json --show-metrics --draw-labels --no-show
 ```
-You can tune detection behavior with: `--scale-factor 1.2 --min-size 80 80 --output annotated.jpg --log-level DEBUG`. Or skip the GUI display with `--no-show`.
 
-Useful security/ops flags:
+Useful flags:
 
-* `--privacy blur|pixelate|black` redacts detected faces in the output.
-* `--cascade-sha256 ...` verifies the cascade XML hash (integrity).
-* `--audit-log audit.jsonl` writes an append-only audit log with a hash chain.
-* `--log-format json --log-file logs/run.log` for machine-readable logs + rotation.
+- `--privacy blur|pixelate|black`
+- `--cascade-sha256 <sha256>`
+- `--audit-log logs/audit.jsonl`
+- `--log-format json --log-file logs/run.log`
 
+### Detect Faces from a Webcam or Capture Device
 
-Sample Output:
-
-![image](https://github.com/user-attachments/assets/1b4a7fc8-ddac-4092-bddb-9b935c64150b)
-
-
-
-### 2. Detect Faces from Webcam
-
-To run real-time face detection using your webcam:
-
-```python
-python detectCapture.py --show-metrics --snapshot-dir snapshots
+```bash
+/home/wellington/env/bin/python detectCapture.py --camera 0 --show-metrics --snapshot-dir snapshots --record output/live.mp4 --summary-json reports/live.json
 ```
-This now logs detection metrics, overlays FPS/latency, optionally records to MP4 (`--record output.mp4`), and automatically/mannually saves snapshots when faces appear (`--snapshot-interval`, `s` key). Use `--no-display` for headless runs.
 
-Other options:
+Useful flags:
 
-* `--reconnect-attempts 3 --reconnect-delay 0.5` retries camera reconnects on transient failures.
-* `--cascade-sha256 ...` verifies the cascade XML hash (integrity).
+- `--camera 0` for numeric camera indexes
+- `--camera /path/to/device-or-video-source` for string sources
+- `--timeout 60`
+- `--reconnect-attempts 3 --reconnect-delay 0.5`
+- `--privacy blur|pixelate|black`
+
+### Detect Faces in a Video File
+
+```bash
+/home/wellington/env/bin/python detect_video.py input.mp4 --output output/annotated.mp4 --summary-json reports/video.json --snapshot-dir snapshots/video --sample-every 2 --show-metrics
+```
+
+Useful flags:
+
+- `--sample-every N` to trade accuracy for speed
+- `--max-frames N` to cap long runs
+- `--snapshot-dir <dir>` to save sampled frames containing faces
+- `--privacy blur|pixelate|black`
+
+## Summary Output
+
+Each workflow can emit a JSON summary with fields such as:
+
+- `mode`
+- `source`
+- `frames_processed`
+- `frames_with_faces`
+- `total_faces`
+- `max_faces_in_frame`
+- `avg_faces_per_processed_frame`
+- `avg_detection_seconds`
 
 ## Audit Log Verification
 
-If you write an audit log (`--audit-log audit.jsonl`), you can verify its tamper-evident hash chain:
+If you write an audit log with `--audit-log`, verify the tamper-evident hash chain with:
 
 ```bash
-python verify_audit.py audit.jsonl
+/home/wellington/env/bin/python verify_audit.py logs/audit.jsonl
+```
+
+## Tests
+
+Run the lightweight regression suite with:
+
+```bash
+/home/wellington/env/bin/python -m unittest discover -s tests -p 'test_*.py'
 ```
