@@ -1,4 +1,4 @@
-"""Live face detection from webcam or capture devices."""
+"""Process a video file and annotate detected faces frame by frame."""
 
 from __future__ import annotations
 
@@ -6,53 +6,43 @@ import argparse
 import os
 import sys
 
-from face_scan.media import parse_capture_source, write_json
+from face_scan.media import write_json
 from face_scan.observability import AuditLogger, DEFAULT_CASCADE_SHA256, configure_logger, sha256_file
-from face_scan.workflows import run_live_capture, validate_detector
+from face_scan.workflows import run_video_detection, validate_detector
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Webcam-based face detection experience.")
-    parser.add_argument(
-        "--camera",
-        default="0",
-        help="Camera index or path to video capture device (default: 0).",
-    )
+    parser = argparse.ArgumentParser(description="Run face detection over a video file.")
+    parser.add_argument("video", help="Path to the input video file.")
+    parser.add_argument("-o", "--output", default=None, help="Optional path for an annotated MP4 output.")
+    parser.add_argument("--summary-json", default=None, help="Optional path for a JSON run summary.")
+    parser.add_argument("--snapshot-dir", default=None, help="Directory to save sampled snapshot frames with faces.")
+    parser.add_argument("--snapshot-interval", type=float, default=5.0, help="Minimum seconds between saved snapshots.")
+    parser.add_argument("--sample-every", type=int, default=1, help="Run detection every Nth frame.")
+    parser.add_argument("--max-frames", type=int, default=0, help="Optional cap on frames to read (0 means full video).")
     parser.add_argument("--cascade", default="haarcascade_frontalface_default.xml", help="Path to the Haar cascade XML file.")
     parser.add_argument(
         "--cascade-sha256",
         default=os.getenv("FACE_SCAN_CASCADE_SHA256") or None,
-        help="Expected sha256 for the cascade XML (enables integrity check).",
+        help="Expected sha256 for the cascade XML.",
     )
     parser.add_argument("--skip-cascade-check", action="store_true", help="Skip cascade integrity check.")
-    parser.add_argument("--min-width", type=int, default=80, help="Minimum face width in pixels.")
-    parser.add_argument("--min-height", type=int, default=80, help="Minimum face height in pixels.")
     parser.add_argument("--scale-factor", type=float, default=1.1, help="Scale factor between pyramid steps.")
-    parser.add_argument("--min-neighbors", type=int, default=5, help="Minimum neighbors to confirm a detection.")
-    parser.add_argument("--width", type=int, default=0, help="Force width for the capture device.")
-    parser.add_argument("--height", type=int, default=0, help="Force height for the capture device.")
-    parser.add_argument("--record", default=None, help="Path to save annotated video.")
-    parser.add_argument("--fps", type=int, default=20, help="Target FPS for recording.")
-    parser.add_argument("--snapshot-dir", default=None, help="Directory to dump face snapshots.")
-    parser.add_argument("--snapshot-interval", type=float, default=5.0, help="Minimum seconds between automated snapshots.")
+    parser.add_argument("--min-neighbors", type=int, default=5, help="Minimum neighbors needed for a detection.")
+    parser.add_argument("--min-size", type=int, nargs=2, default=[60, 60], metavar=("MIN_WIDTH", "MIN_HEIGHT"))
+    parser.add_argument("--draw-labels", action="store_true", help="Label each detected face.")
+    parser.add_argument("--show-metrics", action="store_true", help="Overlay metrics on output frames.")
     parser.add_argument(
         "--privacy",
         choices=("none", "blur", "pixelate", "black"),
         default=os.getenv("FACE_SCAN_PRIVACY", "none"),
         help="Redact detected faces for privacy.",
     )
-    parser.add_argument("--timeout", type=float, default=0, help="Stop after TIMEOUT seconds (0 is unlimited).")
-    parser.add_argument("--reconnect-attempts", type=int, default=0, help="Retry opening the capture source on read failure.")
-    parser.add_argument("--reconnect-delay", type=float, default=0.5, help="Seconds to wait between reconnect attempts.")
-    parser.add_argument("--no-display", action="store_true", help="Skip showing the live window.")
-    parser.add_argument("--show-metrics", action="store_true", help="Draw FPS and face counters on the feed.")
-    parser.add_argument("--draw-labels", action="store_true", help="Label each detected face.")
-    parser.add_argument("--summary-json", default=None, help="Optional path for a JSON run summary.")
     parser.add_argument(
         "--log-level",
         choices=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
         default=os.getenv("FACE_SCAN_LOG_LEVEL", "INFO"),
-        help="Logging level for the capture experience.",
+        help="Log level.",
     )
     parser.add_argument("--log-file", default=os.getenv("FACE_SCAN_LOG_FILE") or None, help="Optional log file path.")
     parser.add_argument(
@@ -69,7 +59,7 @@ def verify_cascade(args: argparse.Namespace, logger, audit: AuditLogger | None) 
     if not os.path.exists(args.cascade):
         logger.error("Cascade XML is missing: %s", args.cascade)
         if audit:
-            audit.emit("capture_error", reason="missing_cascade")
+            audit.emit("video_error", reason="missing_cascade")
         return False
 
     if args.skip_cascade_check:
@@ -85,7 +75,7 @@ def verify_cascade(args: argparse.Namespace, logger, audit: AuditLogger | None) 
             logger.error("Expected sha256=%s got=%s", expected, actual)
             if audit:
                 audit.emit(
-                    "capture_error",
+                    "video_error",
                     reason="cascade_hash_mismatch",
                     expected_sha256=expected,
                     actual_sha256=actual,
@@ -98,16 +88,24 @@ def main() -> int:
     args = parse_args()
     logger = configure_logger(args.log_level, log_file=args.log_file, log_format=args.log_format)
     audit = AuditLogger(args.audit_log) if args.audit_log else None
-    source = parse_capture_source(args.camera)
+
+    if not os.path.exists(args.video):
+        logger.error("Input video not found: %s", args.video)
+        if audit:
+            audit.emit("video_error", reason="missing_video")
+        return 1
+
+    if args.sample_every < 1:
+        logger.error("--sample-every must be >= 1")
+        return 1
 
     if audit:
         audit.emit(
-            "capture_start",
-            camera=str(source),
+            "video_start",
+            video=args.video,
             cascade=args.cascade,
-            privacy=args.privacy,
-            record=args.record,
-            snapshot_dir=args.snapshot_dir,
+            output=args.output,
+            summary_json=args.summary_json,
         )
 
     if not verify_cascade(args, logger, audit):
@@ -115,38 +113,34 @@ def main() -> int:
 
     try:
         detector = validate_detector(args.cascade, logger)
-        summary = run_live_capture(
-            source=source,
+        summary = run_video_detection(
+            source_path=args.video,
             detector=detector,
             scale_factor=args.scale_factor,
             min_neighbors=args.min_neighbors,
-            min_size=(args.min_width, args.min_height),
+            min_size=tuple(args.min_size),
             privacy=args.privacy,
             draw_labels=args.draw_labels,
             show_metrics=args.show_metrics,
-            width=args.width,
-            height=args.height,
-            output_path=args.record,
-            output_fps=args.fps,
+            output_path=args.output,
+            summary_logger=logger,
+            sample_every=args.sample_every,
+            max_frames=args.max_frames,
             snapshot_dir=args.snapshot_dir,
             snapshot_interval=args.snapshot_interval,
-            timeout=args.timeout,
-            reconnect_attempts=args.reconnect_attempts,
-            reconnect_delay=args.reconnect_delay,
-            no_display=args.no_display,
-            logger=logger,
         )
     except (OSError, RuntimeError, ValueError) as exc:
         logger.error("%s", exc)
         if audit:
-            audit.emit("capture_error", reason="runtime_failure", message=str(exc))
+            audit.emit("video_error", reason="runtime_failure", message=str(exc))
         return 1
 
     logger.info(
-        "Capture finished: frames=%s frames_with_faces=%s total_faces=%s avg_detect=%.4fs",
+        "Video finished: processed=%s frames_with_faces=%s total_faces=%s max_faces=%s avg_detect=%.4fs",
         summary.frames_processed,
         summary.frames_with_faces,
         summary.total_faces,
+        summary.max_faces_in_frame,
         summary.avg_detection_seconds,
     )
     if args.summary_json:
@@ -155,7 +149,7 @@ def main() -> int:
         logger.info("Wrote summary to %s", args.summary_json)
     if audit:
         audit.emit(
-            "capture_finish",
+            "video_finish",
             ok=True,
             frames=summary.frames_processed,
             frames_with_faces=summary.frames_with_faces,
