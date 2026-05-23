@@ -24,6 +24,7 @@ AUDIT_LOG="${RUN_DIR}/audit.jsonl"
 
 echo "Input: ${CLIP_PATH}"
 echo "Output directory: ${RUN_DIR}"
+echo "Press q or Esc in the playback window to stop early."
 
 "${PYTHON_BIN}" "${SCRIPT_DIR}/detect_video.py" "${CLIP_PATH}" \
   --output "${ANNOTATED_VIDEO}" \

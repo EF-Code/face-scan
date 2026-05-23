@@ -156,6 +156,7 @@ def run_video_detection(
     max_frames: int,
     snapshot_dir: Optional[str],
     snapshot_interval: float,
+    no_display: bool,
 ) -> DetectionSummary:
     capture = prepare_capture(source_path)
     width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -171,6 +172,7 @@ def run_video_detection(
     total_detect_seconds = 0.0
     last_snapshot = ""
     last_snapshot_time = 0.0
+    playback_delay_ms = max(1, int(round(1000 / input_fps))) if input_fps and input_fps > 0 else 1
 
     try:
         while True:
@@ -217,6 +219,12 @@ def run_video_detection(
             if writer:
                 writer.write(frame)
 
+            if not no_display:
+                cv2.imshow("Face Video", frame)
+                key = cv2.waitKey(playback_delay_ms) & 0xFF
+                if key in (27, ord("q")):
+                    break
+
             if frames_seen % max(1, sample_every * 25) == 0:
                 summary_logger.info(
                     "Processed %s frames (%s detection passes, %s frames with faces)",
@@ -228,6 +236,7 @@ def run_video_detection(
         capture.release()
         if writer:
             writer.release()
+        cv2.destroyAllWindows()
 
     avg_faces = (total_faces / frames_processed) if frames_processed else 0.0
     avg_detect = (total_detect_seconds / frames_processed) if frames_processed else 0.0

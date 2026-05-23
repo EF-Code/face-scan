@@ -35,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-size", type=int, nargs=2, default=[60, 60], metavar=("MIN_WIDTH", "MIN_HEIGHT"))
     parser.add_argument("--draw-labels", action="store_true", help="Label each detected face.")
     parser.add_argument("--show-metrics", action="store_true", help="Overlay metrics on output frames.")
+    parser.add_argument("--no-display", action="store_true", help="Skip showing the annotated playback window.")
     parser.add_argument(
         "--privacy",
         choices=("none", "blur", "pixelate", "black"),
@@ -131,6 +132,7 @@ def main() -> int:
             max_frames=args.max_frames,
             snapshot_dir=args.snapshot_dir,
             snapshot_interval=args.snapshot_interval,
+            no_display=args.no_display,
         )
     except (OSError, RuntimeError, ValueError) as exc:
         logger.error("%s", exc)

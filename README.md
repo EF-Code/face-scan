@@ -62,6 +62,8 @@ Useful flags:
 /home/wellington/env/bin/python detect_video.py input.mp4 --output output/annotated.mp4 --summary-json reports/video.json --snapshot-dir snapshots/video --sample-every 2 --show-metrics
 ```
 
+By default this opens an annotated playback window while processing. Press `q` or `Esc` to stop early. Use `--no-display` for headless runs.
+
 Useful flags:
 
 - `--sample-every N` to trade accuracy for speed
