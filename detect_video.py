@@ -11,6 +11,9 @@ from face_scan.observability import AuditLogger, DEFAULT_CASCADE_SHA256, configu
 from face_scan.workflows import run_video_detection, validate_detector
 
 
+DEFAULT_CASCADE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "haarcascade_frontalface_default.xml")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run face detection over a video file.")
     parser.add_argument("video", help="Path to the input video file.")
@@ -20,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--snapshot-interval", type=float, default=5.0, help="Minimum seconds between saved snapshots.")
     parser.add_argument("--sample-every", type=int, default=1, help="Run detection every Nth frame.")
     parser.add_argument("--max-frames", type=int, default=0, help="Optional cap on frames to read (0 means full video).")
-    parser.add_argument("--cascade", default="haarcascade_frontalface_default.xml", help="Path to the Haar cascade XML file.")
+    parser.add_argument("--cascade", default=DEFAULT_CASCADE_PATH, help="Path to the Haar cascade XML file.")
     parser.add_argument(
         "--cascade-sha256",
         default=os.getenv("FACE_SCAN_CASCADE_SHA256") or None,
@@ -66,7 +69,7 @@ def verify_cascade(args: argparse.Namespace, logger, audit: AuditLogger | None) 
         return True
 
     expected = args.cascade_sha256
-    if expected is None and args.cascade == "haarcascade_frontalface_default.xml":
+    if expected is None and os.path.abspath(args.cascade) == DEFAULT_CASCADE_PATH:
         expected = DEFAULT_CASCADE_SHA256
     if expected:
         actual = sha256_file(args.cascade)
