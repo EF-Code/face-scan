@@ -82,6 +82,10 @@ Useful flags:
 - `--snapshot-dir <dir>` to save sampled frames containing faces
 - `--privacy blur|pixelate|black`
 
+Automatic video and live-capture snapshots are saved after annotation and
+privacy redaction, so the selected privacy mode is preserved in files written
+to disk.
+
 ## Summary Output
 
 Each workflow can emit a JSON summary with fields such as:

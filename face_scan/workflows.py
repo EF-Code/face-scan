@@ -200,10 +200,6 @@ def run_video_detection(
                 if detections:
                     frames_with_faces += 1
 
-            if snapshot_dir and detections and (time.time() - last_snapshot_time) >= snapshot_interval:
-                last_snapshot = save_snapshot(frame, snapshot_dir, prefix="video_face")
-                last_snapshot_time = time.time()
-
             apply_presentation(
                 detector,
                 frame,
@@ -216,6 +212,13 @@ def run_video_detection(
                 last_snapshot=os.path.basename(last_snapshot) if last_snapshot else None,
                 frame_index=frames_seen,
             )
+
+            # Save only after presentation so privacy redaction also applies to
+            # snapshots written to disk.
+            if snapshot_dir and detections and (time.time() - last_snapshot_time) >= snapshot_interval:
+                last_snapshot = save_snapshot(frame, snapshot_dir, prefix="video_face")
+                last_snapshot_time = time.time()
+
             if writer:
                 writer.write(frame)
 
@@ -328,11 +331,6 @@ def run_live_capture(
             if detections:
                 frames_with_faces += 1
 
-            if snapshot_dir and detections and (time.time() - last_snapshot_time) >= snapshot_interval:
-                last_snapshot = save_snapshot(frame, snapshot_dir)
-                last_snapshot_time = time.time()
-                logger.info("Automatic snapshot %s", last_snapshot)
-
             fps = fps_meter.update()
             apply_presentation(
                 detector,
@@ -346,6 +344,12 @@ def run_live_capture(
                 last_snapshot=os.path.basename(last_snapshot) if last_snapshot else None,
                 frame_index=frames_processed,
             )
+
+            # Automatic snapshots must honor the selected privacy mode.
+            if snapshot_dir and detections and (time.time() - last_snapshot_time) >= snapshot_interval:
+                last_snapshot = save_snapshot(frame, snapshot_dir)
+                last_snapshot_time = time.time()
+                logger.info("Automatic snapshot %s", last_snapshot)
 
             if writer:
                 writer.write(frame)
