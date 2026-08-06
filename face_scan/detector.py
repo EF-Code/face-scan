@@ -9,6 +9,8 @@ from typing import Iterable, List, Optional, Tuple
 
 import cv2
 
+from .runtime import require_opencv_api
+
 
 @dataclass(frozen=True)
 class FaceDetection:
@@ -27,7 +29,8 @@ class FaceDetector:
         logger: Optional[logging.Logger] = None,
     ) -> None:
         self._logger = logger or logging.getLogger(__name__)
-        self._cascade = cv2.CascadeClassifier(cascade_path)
+        cascade_classifier = require_opencv_api("CascadeClassifier")
+        self._cascade = cascade_classifier(cascade_path)
         if self._cascade.empty():
             raise ValueError(f"Failed to load Haar cascade from {cascade_path}")
 
@@ -40,6 +43,12 @@ class FaceDetector:
     ) -> Tuple[List[FaceDetection], float]:
         if frame is None or frame.size == 0:
             raise ValueError("Input frame is empty or invalid")
+        if scale_factor <= 1.0:
+            raise ValueError("scale_factor must be greater than 1.0")
+        if min_neighbors < 0:
+            raise ValueError("min_neighbors must be >= 0")
+        if len(min_size) != 2 or any(value <= 0 for value in min_size):
+            raise ValueError("min_size must contain two positive integers")
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
         start = time.perf_counter()

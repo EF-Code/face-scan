@@ -25,6 +25,17 @@ Install dependencies:
 /home/wellington/env/bin/python -m pip install -r requirements.txt
 ```
 
+Install exactly one OpenCV wheel in the environment. Mixing `opencv-python`,
+`opencv-python-headless`, or contrib variants can overwrite the shared `cv2`
+module with an incompatible build.
+
+Check the runtime and bundled cascade before processing media:
+
+```bash
+/home/wellington/env/bin/python doctor.py
+/home/wellington/env/bin/python doctor.py --json
+```
+
 ## Commands
 
 Use `/home/wellington/env/bin/python` for every command below.
